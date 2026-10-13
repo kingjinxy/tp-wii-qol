@@ -166,6 +166,12 @@ parser.add_argument(
     help="builds equivalent (but non-matching) or modded objects",
 )
 parser.add_argument(
+    "--qol-perf",
+    dest="qol_perf",
+    action="store_true",
+    help="build with the QOL frame profiler (requires --non-matching)",
+)
+parser.add_argument(
     "--warn",
     dest="warn",
     type=str,
@@ -318,6 +324,12 @@ if args.debug:
     cflags_base.extend(["-sym on", "-DDEBUG=1"])
 elif config.version == "ShieldD":
     cflags_base.extend(["-DDEBUG=1"])
+
+# QOL flags
+if args.qol_perf:
+    if not args.non_matching:
+        sys.exit("--qol-perf requires --non-matching")
+    cflags_base.append("-DQOL_PERF=1")
 
 # Warning flags
 if args.warn == "all":

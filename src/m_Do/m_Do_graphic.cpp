@@ -42,6 +42,8 @@
 #include "d/d_cursor_mng.h"
 #endif
 
+#include "qol/qol_perf.h"
+
 class mDoGph_HIO_c : public JORReflexible {
 public:
     mDoGph_HIO_c() {
@@ -717,6 +719,13 @@ int mDoGph_AfterOfDraw() {
         JUTProcBar::getManager()->setVisibleHeapBar(procBar_visible);
         JUTDbPrint::getManager()->setVisible(console_visible);
     }
+
+    #if QOL_PERF
+    if (qolPerf_isOverlay()) {
+        JUTProcBar::getManager()->setVisible(true);
+        JUTDbPrint::getManager()->setVisible(true);
+    }
+    #endif
 
     GXSetZCompLoc(GX_ENABLE);
     GXSetZMode(GX_DISABLE, GX_ALWAYS, GX_DISABLE);

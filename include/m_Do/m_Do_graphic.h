@@ -4,6 +4,7 @@
 #include "JSystem/JFramework/JFWDisplay.h"
 #include "m_Do/m_Do_mtx.h"
 #include "global.h"
+#include "qol/qol_perf.h"
 
 #define FB_WIDTH_BASE (608)
 #define FB_HEIGHT_BASE (448)
@@ -113,7 +114,14 @@ public:
     static MtxP getBlureMtx() { return mBlureMtx; }
     static void offAutoForcus() { mAutoForcus = 0; }
     static BOOL isAutoForcus() { return mAutoForcus; }
+    #if QOL_PERF
+    static void setTickRate(u32 rate) {
+        g_qolPerf.mRequestedTickRate = rate;
+        JFWDisplay::getManager()->setTickRate(qolPerf_adjustTickRate(rate));
+    }
+    #else
     static void setTickRate(u32 rate) { JFWDisplay::getManager()->setTickRate(rate); }
+    #endif
     static void waitBlanking(int wait) { JFWDisplay::getManager()->waitBlanking(wait); }
 
     static void setBlureMtx(const Mtx m) {
@@ -223,7 +231,14 @@ public:
     static void endRender() { JFWDisplay::getManager()->endRender(); }
     static GXTexObj* getZbufferTexObj() { return &mZbufferTexObj; }
     static GXTexObj* getFrameBufferTexObj() { return &mFrameBufferTexObj; }
+    #if QOL_PERF
+    static void setFrameRate(u16 i_rate) {
+        g_qolPerf.mRequestedTickRate = 0;
+        JFWDisplay::getManager()->setFrameRate(i_rate);
+    }
+    #else
     static void setFrameRate(u16 i_rate) { JFWDisplay::getManager()->setFrameRate(i_rate); }
+    #endif
 
     static int getFrameBufferSize() {
         #define RoundUp16b(x)   (u16)(((u16)(x) + 16 - 1) & ~(16 - 1))

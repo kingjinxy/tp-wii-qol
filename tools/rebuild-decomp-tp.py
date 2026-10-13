@@ -51,6 +51,17 @@ from gclib.yaz0_yay0 import Yaz0
 from io import BytesIO
 import shutil
 
+import subprocess
+import tempfile
+
+def dtk_yaz0_compress(path: Path) -> BytesIO:
+  # dtk's native compressor is much faster than gclib's pure-Python fallback
+  dtk_path = args.decomp_repo_path / "build/tools/dtk"
+  with tempfile.TemporaryDirectory() as tmp_dir:
+    out_path = Path(tmp_dir) / path.name
+    subprocess.run([dtk_path, "yaz0", "compress", path, "-o", out_path], check=True, capture_output=True)
+    return BytesIO(out_path.read_bytes())
+
 gcm = GCM(args.vanilla_iso_path)
 gcm.read_entire_disc()
 
@@ -67,7 +78,13 @@ for rel_name in os.listdir(decomp_build_path):
     decomp_rel_data = BytesIO(f.read())
     rel_file_entry = rels_arc.get_file_entry(rel_name.lower() + ".rel")
     if rel_file_entry:
-      rel_file_entry.data = Yaz0.compress(decomp_rel_data)
+      # Keep the original compressed data for RELs that are byte-identical to vanilla
+      orig_rel_data = rel_file_entry.data
+      if Yaz0.check_is_compressed(orig_rel_data):
+        orig_rel_data = Yaz0.decompress(orig_rel_data)
+      if orig_rel_data.getvalue() == decomp_rel_data.getvalue():
+        continue
+      rel_file_entry.data = dtk_yaz0_compress(decomp_rel_path)
     else:
       gcm_rel_file_path = f"files/rel/Final/Release/{rel_name}.rel"
       assert gcm_rel_file_path in gcm.files_by_path, f"Invalid REL path: {gcm_rel_file_path}"

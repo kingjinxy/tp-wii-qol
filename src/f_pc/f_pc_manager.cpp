@@ -20,6 +20,7 @@
 #include "f_pc/f_pc_pause.h"
 #include "f_pc/f_pc_priority.h"
 #include "m_Do/m_Do_controller_pad.h"
+#include "qol/qol_perf.h"
 
 void fpcM_Draw(void* i_proc) {
     fpcDw_Execute((base_process_class*)i_proc);
@@ -58,7 +59,9 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
                 l_dvdError = false;
             }
 
+            QOL_PERF_START(QOL_PERF_PAINTER);
             cAPIGph_Painter();
+            QOL_PERF_END(QOL_PERF_PAINTER);
 
             if (!dPa_control_c::isStatus(1)) {
                 fpcDt_Handler();
@@ -79,10 +82,14 @@ void fpcM_Management(fpcM_ManagementFunc i_preExecuteFn, fpcM_ManagementFunc i_p
             }
 
             if (!fapGm_HIO_c::isCaptureScreen()) {
+                QOL_PERF_START(QOL_PERF_EXECUTE);
                 fpcEx_Handler((fpcLnIt_QueueFunc)fpcM_Execute);
+                QOL_PERF_END(QOL_PERF_EXECUTE);
             }
             if (!fapGm_HIO_c::isCaptureScreen() || fapGm_HIO_c::getCaptureScreenDivH() != 1) {
+                QOL_PERF_START(QOL_PERF_DRAW);
                 fpcDw_Handler((fpcDw_HandlerFuncFunc)fpcM_DrawIterater, (fpcDw_HandlerFunc)fpcM_Draw);
+                QOL_PERF_END(QOL_PERF_DRAW);
             }
 
             if (i_postExecuteFn != NULL) {

@@ -53,6 +53,8 @@
 #include "d/d_cursor_mng.h"
 #endif
 
+#include "qol/qol_perf.h"
+
 static int dScnPly_Create(scene_class*);
 static int dScnPly_Delete(dScnPly_c*);
 static int dScnPly_IsDelete(dScnPly_c);
@@ -545,7 +547,9 @@ static int dScnPly_Draw(dScnPly_c* i_this) {
     dStage_DebugDisp();
     #endif
 
+    QOL_PERF_START(QOL_PERF_CC);
     dComIfG_Ccsp()->Move();
+    QOL_PERF_END(QOL_PERF_CC);
     dComIfG_Bgsp().ClrMoveFlag();
 
     if (!fopOvlpM_IsPeek() && !dComIfG_resetToOpening(i_this)) {
@@ -598,12 +602,16 @@ static int dScnPly_Draw(dScnPly_c* i_this) {
             dComIfGp_getVibration().Run();
         }
         daSus_c::execute();
+        QOL_PERF_START(QOL_PERF_BG);
         dComIfG_Bgsp().Move();
+        QOL_PERF_END(QOL_PERF_BG);
         #if VERSION == VERSION_SHIELD_DEBUG
         dPath_Move();
         #endif
+        QOL_PERF_START(QOL_PERF_PARTICLE);
         dComIfGp_particle_calc3D();
         dComIfGp_particle_calc2D();
+        QOL_PERF_END(QOL_PERF_PARTICLE);
         cCt_execCounter();
     } else {
         dPa_control_c::onStatus(1);

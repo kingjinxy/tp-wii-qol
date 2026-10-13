@@ -36,6 +36,11 @@
 #include "m_Do/m_Do_ext2.h"
 #include "SSystem/SComponent/c_counter.h"
 #include <cstring>
+#include "qol/qol_perf.h"
+
+#if QOL_PERF
+#include "JSystem/JUtility/JUTReport.h"
+#endif
 
 #if PLATFORM_WII
 #include "d/d_cursor_mng.h"
@@ -751,6 +756,124 @@ inline void HeapCheck::setHeap(JKRExpHeap* i_heap) {
 #endif
 }
 
+#if QOL_PERF
+qolPerf_c g_qolPerf = {QOL_PERF_MAGIC, QOL_PERF_VERSION};
+
+bool qolPerf_isOverlay() {
+    return g_qolPerf.mOverlay != 0;
+}
+
+u32 qolPerf_adjustTickRate(u32 rate) {
+    if (g_qolPerf.mUnlock && rate == OS_TIMER_CLOCK / 30) {
+        return OS_TIMER_CLOCK / 60;
+    }
+    return rate;
+}
+
+struct qolPerf_warp_c {
+    const char* mLabel;
+    const char* mStage;
+    s8 mRoom;
+    s16 mPoint;
+};
+
+// Spawn points taken from the PLYR chunks of each room's .dzr on the GZ2E01 disc
+static const qolPerf_warp_c l_qolPerf_warps[] = {
+    {"Hyrule Field R00", "F_SP121", 0, 0},
+    {"Hyrule Field R03", "F_SP121", 3, 0},
+    {"Hyrule Field R06", "F_SP121", 6, 0},
+    {"Hyrule Field R07", "F_SP121", 7, 0},
+    {"Hyrule Field R10", "F_SP121", 10, 0},
+    {"Hyrule Field R13", "F_SP121", 13, 0},
+    {"Castle Town R00", "F_SP116", 0, 0},
+    {"Castle Town R01", "F_SP116", 1, 0},
+    {"Castle Town R03", "F_SP116", 3, 0},
+    {"Kakariko Village", "F_SP109", 0, 0},
+};
+
+static int l_qolPerf_warpIdx;
+
+static void qolPerf_updateWarp() {
+    const int num = ARRAY_SIZE(l_qolPerf_warps);
+
+    if (mDoCPd_c::getTrigRight(PAD_1)) {
+        l_qolPerf_warpIdx = (l_qolPerf_warpIdx + 1) % num;
+    } else if (mDoCPd_c::getTrigLeft(PAD_1)) {
+        l_qolPerf_warpIdx = (l_qolPerf_warpIdx + num - 1) % num;
+    } else if (mDoCPd_c::getTrigUp(PAD_1) && dComIfGp_getPlayer(0) != NULL) {
+        const qolPerf_warp_c& warp = l_qolPerf_warps[l_qolPerf_warpIdx];
+        // Layer -1 lets the game pick the layer from story progress
+        dComIfGp_setNextStage(warp.mStage, warp.mPoint, warp.mRoom, -1);
+    }
+}
+
+static void qolPerf_drawOverlay() {
+    static const char* const names[QOL_PERF_MAX] = {
+        "frame", "painter", "execute", "draw", "cc", "bg", "particle", "audio",
+    };
+
+    JUTReport(40, 60, "QOL PERF  retraces %d  peak %d  %s", g_qolPerf.mRetraces, g_qolPerf.mPeakRetraces,
+              g_qolPerf.mUnlock ? "UNLOCKED" : "");
+    for (int i = 0; i < QOL_PERF_MAX; i++) {
+        JUTReport(40, 76 + i * 14, "%-9s %6d us  peak %6d us", names[i],
+                  OSTicksToMicroseconds(g_qolPerf.mCur[i]), OSTicksToMicroseconds(g_qolPerf.mPeak[i]));
+    }
+    JUTReport(40, 76 + QOL_PERF_MAX * 14, "warp: %s  (L+R+Left/Right, L+R+Up)",
+              l_qolPerf_warps[l_qolPerf_warpIdx].mLabel);
+}
+
+void qolPerf_frameEnd() {
+    qolPerf_c& perf = g_qolPerf;
+
+    perf.mBusClock = OS_BUS_CLOCK;
+    perf.mFrameCount++;
+
+    u32 retrace = VIGetRetraceCount();
+    perf.mRetraces = retrace - perf.mLastRetrace;
+    perf.mLastRetrace = retrace;
+    if (perf.mRetraces > perf.mWindowPeakRetraces) {
+        perf.mWindowPeakRetraces = perf.mRetraces;
+    }
+
+    for (int i = 0; i < QOL_PERF_MAX; i++) {
+        perf.mCur[i] = perf.mAccum[i];
+        perf.mAccum[i] = 0;
+        if (perf.mCur[i] > perf.mWindowPeak[i]) {
+            perf.mWindowPeak[i] = perf.mCur[i];
+        }
+    }
+
+    if (++perf.mWindowFrames >= QOL_PERF_PEAK_WINDOW) {
+        for (int i = 0; i < QOL_PERF_MAX; i++) {
+            perf.mPeak[i] = perf.mWindowPeak[i];
+            perf.mWindowPeak[i] = 0;
+        }
+        perf.mPeakRetraces = perf.mWindowPeakRetraces;
+        perf.mWindowPeakRetraces = 0;
+        perf.mWindowFrames = 0;
+    }
+
+    if (mDoCPd_c::getHoldL(PAD_1) && mDoCPd_c::getHoldR(PAD_1) && mDoCPd_c::getTrigZ(PAD_1)) {
+        perf.mOverlay ^= 1;
+    }
+
+    if (perf.mOverlay && mDoCPd_c::getHoldL(PAD_1) && mDoCPd_c::getHoldR(PAD_1)) {
+        qolPerf_updateWarp();
+    }
+
+    if (mDoCPd_c::getHoldL(PAD_1) && mDoCPd_c::getHoldR(PAD_1) && mDoCPd_c::getTrigX(PAD_1)) {
+        perf.mUnlock ^= 1;
+        if (perf.mRequestedTickRate != 0) {
+            mDoGph_gInf_c::setTickRate(perf.mRequestedTickRate);
+        }
+    }
+
+    if (perf.mOverlay) {
+        qolPerf_drawOverlay();
+    }
+}
+#endif
+
 void main01(void) {
     OS_REPORT("\x1B[m");
 
@@ -824,6 +947,7 @@ void main01(void) {
     do {
         static u32 frame;
         frame++;
+        QOL_PERF_START(QOL_PERF_FRAME);
 
         #if DEBUG
         if (memorycheck_check_frame != 0 && frame % memorycheck_check_frame == 0) {
@@ -866,7 +990,9 @@ void main01(void) {
         fapGm_HIO_c::startCpuTimer();
         #endif
 
+        QOL_PERF_START(QOL_PERF_AUDIO);
         mDoAud_Execute();   // handle audio execution
+        QOL_PERF_END(QOL_PERF_AUDIO);
 
         #if DEBUG
         fapGm_HIO_c::printCpuTimer("");
@@ -874,6 +1000,11 @@ void main01(void) {
         #endif
 
         debug();            // run debugger
+
+        #if QOL_PERF
+        QOL_PERF_END(QOL_PERF_FRAME);
+        qolPerf_frameEnd();
+        #endif
     } while (true);
 }
 
